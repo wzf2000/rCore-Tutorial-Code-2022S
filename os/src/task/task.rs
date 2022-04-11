@@ -1,6 +1,6 @@
 //! Types related to task management
 use super::TaskContext;
-use crate::config::{kernel_stack_position, TRAP_CONTEXT};
+use crate::config::{kernel_stack_position, TRAP_CONTEXT, MAX_SYSCALL_NUM};
 use crate::mm::{MapPermission, MemorySet, PhysPageNum, VirtAddr, KERNEL_SPACE};
 use crate::trap::{trap_handler, TrapContext};
 
@@ -11,6 +11,8 @@ pub struct TaskControlBlock {
     pub memory_set: MemorySet,
     pub trap_cx_ppn: PhysPageNum,
     pub base_size: usize,
+    pub task_syscall_times: [u32; MAX_SYSCALL_NUM],
+    pub task_start_time: usize,
 }
 
 impl TaskControlBlock {
@@ -19,6 +21,16 @@ impl TaskControlBlock {
     }
     pub fn get_user_token(&self) -> usize {
         self.memory_set.token()
+    }
+    pub fn memory_map(&mut self, start_va: VirtAddr, end_va: VirtAddr, permission: MapPermission) -> isize {
+        let flag = self.memory_set.check_va_range(start_va, end_va);
+        if flag == 0 {
+            self.memory_set.insert_framed_area(start_va, end_va, permission);
+        }
+        flag
+    }
+    pub fn memory_unmap(&mut self, start_va: VirtAddr, end_va: VirtAddr) -> isize {
+        self.memory_set.delete_va_range(start_va, end_va)
     }
     pub fn new(elf_data: &[u8], app_id: usize) -> Self {
         // memory_set with elf program headers/trampoline/trap context/user stack
@@ -41,6 +53,8 @@ impl TaskControlBlock {
             memory_set,
             trap_cx_ppn,
             base_size: user_sp,
+            task_syscall_times: [0; MAX_SYSCALL_NUM],
+            task_start_time: 0,
         };
         // prepare TrapContext in user space
         let trap_cx = task_control_block.get_trap_cx();
@@ -58,6 +72,7 @@ impl TaskControlBlock {
 #[derive(Copy, Clone, PartialEq)]
 /// task status: UnInit, Ready, Running, Exited
 pub enum TaskStatus {
+    UnInit,
     Ready,
     Running,
     Exited,

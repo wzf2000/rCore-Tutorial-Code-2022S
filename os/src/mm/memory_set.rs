@@ -217,6 +217,35 @@ impl MemorySet {
     pub fn translate(&self, vpn: VirtPageNum) -> Option<PageTableEntry> {
         self.page_table.translate(vpn)
     }
+    pub fn check_va_range(&self, start_va: VirtAddr, end_va: VirtAddr) -> isize {
+        for area in self.areas.iter() {
+            let vpn_range = area.vpn_range;
+            let vpn_start = VirtAddr::from(vpn_range.get_start());
+            let vpn_end = VirtAddr::from(vpn_range.get_end());
+            if !(vpn_start >= end_va || vpn_end <= start_va) {
+                return -1;
+            }
+        }
+        0
+    }
+    pub fn delete_va_range(&mut self, start_va: VirtAddr, end_va: VirtAddr) -> isize {
+        let mut flag = -1 as isize;
+        let mut pos = 0;
+        for (i, area) in self.areas.iter().enumerate() {
+            let vpn_range = area.vpn_range;
+            let va_start = VirtAddr::from(vpn_range.get_start());
+            let va_end = VirtAddr::from(vpn_range.get_end());
+            if va_start == start_va && va_end == end_va {
+                flag = 0;
+                pos = i;
+            }
+        }
+        if flag == 0 {
+            self.areas[pos].unmap(&mut self.page_table);
+            self.areas.retain(|area| VirtAddr::from(area.vpn_range.get_start()) != start_va || VirtAddr::from(area.vpn_range.get_end()) != end_va);
+        }
+        flag
+    }
 }
 
 /// map area structure, controls a contiguous piece of virtual memory
