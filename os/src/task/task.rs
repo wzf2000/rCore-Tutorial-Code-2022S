@@ -2,8 +2,8 @@
 
 use super::TaskContext;
 use super::{pid_alloc, KernelStack, PidHandle};
-use crate::config::TRAP_CONTEXT;
-use crate::mm::{MemorySet, PhysPageNum, VirtAddr, KERNEL_SPACE};
+use crate::config::{TRAP_CONTEXT, MAX_SYSCALL_NUM};
+use crate::mm::{MapPermission, MemorySet, PhysPageNum, VirtAddr, KERNEL_SPACE};
 use crate::sync::UPSafeCell;
 use crate::trap::{trap_handler, TrapContext};
 use alloc::sync::{Arc, Weak};
@@ -50,6 +50,8 @@ pub struct TaskControlBlockInner {
     /// It is set when active exit or execution error occurs
     pub exit_code: i32,
     pub fd_table: Vec<Option<Arc<dyn File + Send + Sync>>>,
+    pub task_syscall_times: [u32; MAX_SYSCALL_NUM],
+    pub task_start_time: usize,
 }
 
 /// Simple access to its internal fields
@@ -79,6 +81,16 @@ impl TaskControlBlockInner {
             self.fd_table.push(None);
             self.fd_table.len() - 1
         }
+    }
+    pub fn memory_map(&mut self, start_va: VirtAddr, end_va: VirtAddr, permission: MapPermission) -> isize {
+        let flag = self.memory_set.check_va_range(start_va, end_va);
+        if flag == 0 {
+            self.memory_set.insert_framed_area(start_va, end_va, permission);
+        }
+        flag
+    }
+    pub fn memory_unmap(&mut self, start_va: VirtAddr, end_va: VirtAddr) -> isize {
+        self.memory_set.delete_va_range(start_va, end_va)
     }
 }
 
@@ -124,6 +136,8 @@ impl TaskControlBlock {
                         // 2 -> stderr
                         Some(Arc::new(Stdout)),
                     ],
+                    task_syscall_times: [0; MAX_SYSCALL_NUM],
+                    task_start_time: 0,
                 })
             },
         };
@@ -200,6 +214,8 @@ impl TaskControlBlock {
                     children: Vec::new(),
                     exit_code: 0,
                     fd_table: new_fd_table,
+                    task_syscall_times: parent_inner.task_syscall_times,
+                    task_start_time: parent_inner.task_start_time,
                 })
             },
         });

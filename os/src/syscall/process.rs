@@ -1,6 +1,7 @@
 //! Process management syscalls
 
-use crate::mm::{translated_refmut, translated_ref, translated_str};
+use crate::loader::get_app_data_by_name;
+use crate::mm::{translated_refmut, translated_ref, translated_str, VirtAddr, MapPermission};
 use crate::task::{
     add_task, current_task, current_user_token, exit_current_and_run_next,
     suspend_current_and_run_next, TaskStatus,
@@ -9,8 +10,13 @@ use crate::fs::{open_file, OpenFlags};
 use crate::timer::get_time_us;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
-use crate::config::MAX_SYSCALL_NUM;
 use alloc::string::String;
+use crate::timer::{get_time_us, get_time_ms};
+use crate::config::{MAX_SYSCALL_NUM, PAGE_SIZE};
+use crate::task::{
+    current_status, current_syscall_times, current_start_time,
+    current_memory_map, current_memory_unmap,
+};
 
 #[repr(C)]
 #[derive(Debug)]
@@ -112,18 +118,23 @@ pub fn sys_waitpid(pid: isize, exit_code_ptr: *mut i32) -> isize {
 // YOUR JOB: 引入虚地址后重写 sys_get_time
 pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
     let _us = get_time_us();
-    // unsafe {
-    //     *ts = TimeVal {
-    //         sec: us / 1_000_000,
-    //         usec: us % 1_000_000,
-    //     };
-    // }
+    let addr = translated_refmut(current_user_token(), _ts);
+    *addr = TimeVal {
+        sec: _us / 1_000_000,
+        usec: _us % 1_000_000,
+    };
     0
 }
 
 // YOUR JOB: 引入虚地址后重写 sys_task_info
 pub fn sys_task_info(ti: *mut TaskInfo) -> isize {
-    -1
+    let addr = translated_refmut(current_user_token(), ti);
+    *addr = TaskInfo {
+        status: current_status(),
+        syscall_times: current_syscall_times(),
+        time: get_time_ms() - current_start_time(),
+    };
+    0
 }
 
 // YOUR JOB: 实现sys_set_priority，为任务添加优先级
@@ -133,11 +144,22 @@ pub fn sys_set_priority(_prio: isize) -> isize {
 
 // YOUR JOB: 扩展内核以实现 sys_mmap 和 sys_munmap
 pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
-    -1
+    if _start % PAGE_SIZE != 0 || _port & !0x7 != 0 || _port & 0x7 == 0 {
+        return -1
+    }
+    let start_va = VirtAddr::from(_start);
+    let end_va = VirtAddr::from(_start + _len).into();
+    let permission = MapPermission::from_bits((_port << 1 | 1 << 4) as u8).unwrap();
+    current_memory_map(start_va, end_va, permission)
 }
 
 pub fn sys_munmap(_start: usize, _len: usize) -> isize {
-    -1
+    if _start % PAGE_SIZE != 0 {
+        return -1
+    }
+    let start_va = VirtAddr::from(_start);
+    let end_va = VirtAddr::from(_start + _len).into();
+    current_memory_unmap(start_va, end_va)
 }
 
 //
