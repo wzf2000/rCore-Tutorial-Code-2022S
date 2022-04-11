@@ -29,6 +29,9 @@ pub use manager::add_task;
 pub use pid::{pid_alloc, KernelStack, PidHandle};
 pub use processor::{
     current_task, current_trap_cx, current_user_token, run_tasks, schedule, take_current_task,
+    current_status, current_syscall_times, current_start_time,
+    current_memory_map, current_memory_unmap,
+    add_syscall_id,
 };
 
 /// Make current task suspended and switch to the next task

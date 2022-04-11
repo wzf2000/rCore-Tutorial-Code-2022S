@@ -10,6 +10,8 @@ use super::{fetch_task, TaskStatus};
 use super::{TaskContext, TaskControlBlock};
 use crate::sync::UPSafeCell;
 use crate::trap::TrapContext;
+use crate::mm::{VirtAddr, MapPermission};
+use crate::config::{MAX_SYSCALL_NUM};
 use alloc::sync::Arc;
 use lazy_static::*;
 
@@ -102,4 +104,42 @@ pub fn schedule(switched_task_cx_ptr: *mut TaskContext) {
     unsafe {
         __switch(switched_task_cx_ptr, idle_task_cx_ptr);
     }
+}
+
+pub fn current_status() -> TaskStatus {
+    current_task()
+        .unwrap()
+        .inner_exclusive_access().task_status
+}
+
+pub fn current_syscall_times() -> [u32; MAX_SYSCALL_NUM] {
+    current_task()
+        .unwrap()
+        .inner_exclusive_access().task_syscall_times
+}
+
+pub fn current_start_time() -> usize {
+    current_task()
+        .unwrap()
+        .inner_exclusive_access().task_start_time
+}
+
+pub fn add_syscall_id(syscall_id: usize) {
+    current_task()
+        .unwrap()
+        .inner_exclusive_access().task_syscall_times[syscall_id] += 1;
+}
+
+#[allow(clippy::mut_from_ref)]
+pub fn current_memory_map(start_va: VirtAddr, end_va: VirtAddr, permission: MapPermission) -> isize {
+    current_task()
+        .unwrap()
+        .inner_exclusive_access().memory_map(start_va, end_va, permission)
+}
+
+#[allow(clippy::mut_from_ref)]
+pub fn current_memory_unmap(start_va: VirtAddr, end_va: VirtAddr) -> isize {
+    current_task()
+        .unwrap()
+        .inner_exclusive_access().memory_unmap(start_va, end_va)
 }
