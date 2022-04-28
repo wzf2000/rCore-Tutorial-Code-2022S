@@ -37,6 +37,7 @@ pub use processor::{
     current_status, current_syscall_times, current_start_time,
     current_memory_map, current_memory_unmap,
     add_syscall_id,
+    current_set_priority,
 };
 
 /// Make current task suspended and switch to the next task

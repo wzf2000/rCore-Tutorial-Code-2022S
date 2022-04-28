@@ -16,6 +16,7 @@ use crate::config::{MAX_SYSCALL_NUM, PAGE_SIZE};
 use crate::task::{
     current_status, current_syscall_times, current_start_time,
     current_memory_map, current_memory_unmap,
+    current_set_priority,
 };
 
 #[repr(C)]
@@ -139,7 +140,13 @@ pub fn sys_task_info(ti: *mut TaskInfo) -> isize {
 
 // YOUR JOB: 实现sys_set_priority，为任务添加优先级
 pub fn sys_set_priority(_prio: isize) -> isize {
-    -1
+    if _prio >= 2 {
+        current_set_priority(_prio);
+        _prio
+    }
+    else {
+        -1
+    }
 }
 
 // YOUR JOB: 扩展内核以实现 sys_mmap 和 sys_munmap
@@ -166,5 +173,15 @@ pub fn sys_munmap(_start: usize, _len: usize) -> isize {
 // YOUR JOB: 实现 sys_spawn 系统调用
 // ALERT: 注意在实现 SPAWN 时不需要复制父进程地址空间，SPAWN != FORK + EXEC 
 pub fn sys_spawn(_path: *const u8) -> isize {
-    -1
+    let token = current_user_token();
+    let path = translated_str(token, _path);
+    if let Some(data) = get_app_data_by_name(path.as_str()) {
+        let current_task = current_task().unwrap();
+        let new_task = current_task.spawn(data);
+        let new_pid = new_task.pid.0;
+        add_task(new_task);
+        new_pid as isize
+    } else {
+        -1
+    }
 }
