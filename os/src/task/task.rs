@@ -48,6 +48,8 @@ pub struct TaskControlBlockInner {
     pub exit_code: i32,
     pub task_syscall_times: [u32; MAX_SYSCALL_NUM],
     pub task_start_time: usize,
+    pub priority: isize,
+    pub stride: usize,
 }
 
 /// Simple access to its internal fields
@@ -117,6 +119,8 @@ impl TaskControlBlock {
                     exit_code: 0,
                     task_syscall_times: [0; MAX_SYSCALL_NUM],
                     task_start_time: 0,
+                    priority: 16,
+                    stride: 0,
                 })
             },
         };
@@ -155,6 +159,8 @@ impl TaskControlBlock {
             self.kernel_stack.get_top(),
             trap_handler as usize,
         );
+        inner.task_start_time = 0;
+        inner.task_syscall_times = [0; MAX_SYSCALL_NUM];
         // **** release inner automatically
     }
     /// Fork from parent to child
@@ -186,6 +192,8 @@ impl TaskControlBlock {
                     exit_code: 0,
                     task_syscall_times: parent_inner.task_syscall_times,
                     task_start_time: parent_inner.task_start_time,
+                    priority: 16,
+                    stride: 0,
                 })
             },
         });
@@ -202,6 +210,47 @@ impl TaskControlBlock {
     }
     pub fn getpid(&self) -> usize {
         self.pid.0
+    }
+    pub fn spawn(self: &Arc<TaskControlBlock>, elf_data: &[u8]) -> Arc<TaskControlBlock> {
+        let mut parent_inner = self.inner_exclusive_access();
+        let (memory_set, user_sp, entry_point) = MemorySet::from_elf(elf_data);
+        let trap_cx_ppn = memory_set
+            .translate(VirtAddr::from(TRAP_CONTEXT).into())
+            .unwrap()
+            .ppn();
+        let pid_handle = pid_alloc();
+        let kernel_stack = KernelStack::new(&pid_handle);
+        let kernel_stack_top = kernel_stack.get_top();
+        let task_control_block = Arc::new(TaskControlBlock {
+            pid: pid_handle,
+            kernel_stack,
+            inner: unsafe {
+                UPSafeCell::new(TaskControlBlockInner {
+                    trap_cx_ppn,
+                    base_size: user_sp,
+                    task_cx: TaskContext::goto_trap_return(kernel_stack_top),
+                    task_status: TaskStatus::Ready,
+                    memory_set,
+                    parent: Some(Arc::downgrade(self)),
+                    children: Vec::new(),
+                    exit_code: 0,
+                    task_syscall_times: [0; MAX_SYSCALL_NUM],
+                    task_start_time: 0,
+                    priority: 16,
+                    stride: 0,
+                })
+            },
+        });
+        let trap_cx = task_control_block.inner_exclusive_access().get_trap_cx();
+        *trap_cx = TrapContext::app_init_context(
+            entry_point,
+            user_sp,
+            KERNEL_SPACE.exclusive_access().token(),
+            kernel_stack_top,
+            trap_handler as usize,
+        );
+        parent_inner.children.push(task_control_block.clone());
+        task_control_block
     }
 }
 
