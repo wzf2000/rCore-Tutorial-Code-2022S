@@ -1,6 +1,6 @@
 
 use virtio_drivers::{VirtIOBlk, VirtIOHeader};
-use crate::mm::{
+use crate::{mm::{
     PhysAddr,
     VirtAddr,
     frame_alloc,
@@ -10,7 +10,7 @@ use crate::mm::{
     PageTable,
     StepByOne,
     kernel_token,
-};
+}, drivers::block};
 use super::BlockDevice;
 use crate::sync::UPSafeCell;
 use alloc::vec::Vec;
