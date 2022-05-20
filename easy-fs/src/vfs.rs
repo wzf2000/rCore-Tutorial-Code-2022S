@@ -211,7 +211,7 @@ impl Inode {
         // initialize inode
         // release efs lock automatically by compiler
     }
-    fn delete_dirent(&self, f: impl Fn(&DirEntry) -> bool, disk_inode: &mut DiskInode, flag: bool) {
+    fn delete_dirent(&self, f: impl Fn(&DirEntry) -> bool, disk_inode: &mut DiskInode) {
         let file_count = (disk_inode.size as usize) / DIRENT_SZ;
         // delete dirent
         let mut dirent = DirEntry::empty();
@@ -225,18 +225,6 @@ impl Inode {
                 DIRENT_SZ,
             );
             if f(&dirent) {
-                if flag == true {
-                    let inode_id = dirent.inode_number();
-                    let fs = self.fs.lock();
-                    let (block_id, block_offset) = fs.get_disk_inode_pos(inode_id);
-                    Arc::new(Self::new(
-                        block_id,
-                        block_offset,
-                        self.fs.clone(),
-                        self.block_device.clone(),
-                        inode_id,
-                    )).clear();
-                }
                 let dirent = DirEntry::empty();
                 disk_inode.write_at(
                     DIRENT_SZ * i,
@@ -252,22 +240,32 @@ impl Inode {
         self.modify_disk_inode(|disk_inode| {
             if let Some(exit_code) = self.find_inode_id(name, disk_inode)
             .map(|inode_id| {
+                self.delete_dirent(|dirent| {
+                    dirent.name() == name
+                }, disk_inode);
                 let (block_id, block_offset) = fs.get_disk_inode_pos(inode_id);
-                get_block_cache(
-                    block_id as usize,
-                    Arc::clone(&self.block_device)
-                ).lock().modify(block_offset, |disk_inode: &mut DiskInode| {
+                let delete_inode = Self::new(
+                    block_id,
+                    block_offset,
+                    self.fs.clone(),
+                    self.block_device.clone(),
+                    inode_id,
+                );
+                delete_inode.modify_disk_inode(|disk_inode| {
                     disk_inode.nlink -= 1;
                     if disk_inode.nlink == 0 {
                         self.delete_dirent(|dirent| {
                             dirent.inode_number() == inode_id
-                        }, disk_inode, true);
+                        }, disk_inode);
+                        let size = disk_inode.size;
+                        let data_blocks_dealloc = disk_inode.clear_size(&delete_inode.block_device);
+                        assert!(data_blocks_dealloc.len() == DiskInode::total_blocks(size) as usize);
+                        for data_block in data_blocks_dealloc.into_iter() {
+                            fs.dealloc_data(data_block);
+                        }
                         fs.dealloc_inode(inode_id);
                     }
                 });
-                self.delete_dirent(|dirent| {
-                    dirent.name() == name
-                }, disk_inode, false);
                 0
             }) {
                 exit_code
