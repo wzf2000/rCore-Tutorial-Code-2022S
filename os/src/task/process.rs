@@ -18,6 +18,108 @@ pub struct ProcessControlBlock {
 }
 
 // LAB5 HINT: you may add data structures for deadlock detection here
+
+pub struct DeadLockDetectStruct {
+    pub m: usize,
+    pub available: Vec<u32>,
+    pub allocation: Vec<Vec<u32>>,
+    pub need: Vec<Vec<u32>>,
+}
+
+impl DeadLockDetectStruct {
+    pub fn new(main_thread: bool) -> Self {
+        let mut ret = Self {
+            m: 0,
+            available: Vec::new(),
+            allocation: Vec::new(),
+            need: Vec::new(),
+        };
+        if main_thread {
+            ret.allocation.push(Vec::new());
+            ret.need.push(Vec::new());
+        }
+        ret
+    }
+    pub fn add_thread(&mut self, tid: usize) {
+        assert!(tid <= self.need.len());
+        if tid == self.need.len() {
+            self.allocation.push(Vec::new());
+            self.need.push(Vec::new());
+            for _ in 0..self.m {
+                self.allocation[tid].push(0);
+                self.need[tid].push(0);
+            }
+        }
+    }
+    pub fn create(&mut self, id: usize, available_num: u32) {
+        if id < self.m {
+            self.available[id] = available_num;
+        } else {
+            self.m += 1;
+            self.available.push(available_num);
+            let n = self.allocation.len();
+            for i in 0..n {
+                self.allocation[i].push(0);
+                self.need[i].push(0);
+            }
+        }
+    }
+    pub fn check(&mut self, tid: usize, id: usize, if_check: bool) -> bool {
+        self.need[tid][id] += 1;
+        if if_check == false {
+            return true;
+        }
+        let mut work = Vec::clone(&self.available);
+        let n = self.need.len();
+        let mut finish = Vec::new();
+        for _ in 0..n {
+            finish.push(false);
+        }
+        loop {
+            let mut find = -1;
+            for i in 0..n {
+                if finish[i] == true {
+                    continue;
+                }
+                let mut flag = true;
+                for j in 0..self.m {
+                    if self.need[i][j] > work[j] {
+                        flag = false;
+                        break;
+                    }
+                }
+                if flag {
+                    find = i as i32;
+                }
+            }
+            if find == -1 {
+                break;
+            } else {
+                for j in 0..self.m {
+                    work[j] += self.allocation[find as usize][j];
+                }
+                finish[find as usize] = true;
+            }
+        }
+        for i in 0..n {
+            if finish[i] == false {
+                self.need[tid][id] -= 1;
+                return false;
+            }
+        }
+        true
+    }
+    pub fn alloc(self: &mut Self, tid: usize, id: usize) {
+        self.need[tid][id] -= 1;
+        self.allocation[tid][id] += 1;
+        self.available[id] -= 1;
+    }
+    pub fn dealloc(self: &mut Self, tid: usize, id: usize) {
+        self.allocation[tid][id] -= 1;
+        self.available[id] += 1;
+    }
+}
+
 pub struct ProcessControlBlockInner {
     pub is_zombie: bool,
     pub memory_set: MemorySet,
@@ -30,6 +132,9 @@ pub struct ProcessControlBlockInner {
     pub mutex_list: Vec<Option<Arc<dyn Mutex>>>,
     pub semaphore_list: Vec<Option<Arc<Semaphore>>>,
     pub condvar_list: Vec<Option<Arc<Condvar>>>,
+    pub deadlock_detect: bool,
+    pub mutex_detect: DeadLockDetectStruct,
+    pub semaphore_detect: DeadLockDetectStruct,
 }
 
 impl ProcessControlBlockInner {
@@ -97,6 +202,9 @@ impl ProcessControlBlock {
                     mutex_list: Vec::new(),
                     semaphore_list: Vec::new(),
                     condvar_list: Vec::new(),
+                    deadlock_detect: false,
+                    mutex_detect: DeadLockDetectStruct::new(true),
+                    semaphore_detect: DeadLockDetectStruct::new(true),
                 })
             },
         });
@@ -218,6 +326,9 @@ impl ProcessControlBlock {
                     mutex_list: Vec::new(),
                     semaphore_list: Vec::new(),
                     condvar_list: Vec::new(),
+                    deadlock_detect: false,
+                    mutex_detect: DeadLockDetectStruct::new(true),
+                    semaphore_detect: DeadLockDetectStruct::new(true),
                 })
             },
         });
@@ -272,9 +383,42 @@ impl ProcessControlBlock {
                     mutex_list: Vec::new(),
                     semaphore_list: Vec::new(),
                     condvar_list: Vec::new(),
+                    deadlock_detect: false,
+                    mutex_detect: DeadLockDetectStruct::new(false),
+                    semaphore_detect: DeadLockDetectStruct::new(false),
                 })
             },
         });
         process
+    }
+
+    pub fn mutex_check(&self, tid: usize, id: usize, if_check: bool) -> bool {
+        let mut inner = self.inner_exclusive_access();
+        inner.mutex_detect.check(tid, id, if_check)
+    }
+
+    pub fn mutex_alloc(&self, tid: usize, id: usize) {
+        let mut inner = self.inner_exclusive_access();
+        inner.mutex_detect.alloc(tid, id);
+    }
+
+    pub fn mutex_dealloc(&self, tid: usize, id: usize) {
+        let mut inner = self.inner_exclusive_access();
+        inner.mutex_detect.dealloc(tid, id);
+    }
+
+    pub fn semaphore_check(&self, tid: usize, id: usize, if_check: bool) -> bool {
+        let mut inner = self.inner_exclusive_access();
+        inner.semaphore_detect.check(tid, id, if_check)
+    }
+
+    pub fn semaphore_alloc(&self, tid: usize, id: usize) {
+        let mut inner = self.inner_exclusive_access();
+        inner.semaphore_detect.alloc(tid, id);
+    }
+
+    pub fn semaphore_dealloc(&self, tid: usize, id: usize) {
+        let mut inner = self.inner_exclusive_access();
+        inner.semaphore_detect.dealloc(tid, id);
     }
 }

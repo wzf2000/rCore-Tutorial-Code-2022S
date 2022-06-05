@@ -2,7 +2,7 @@
 
 use crate::config::MAX_SYSCALL_NUM;
 use crate::fs::{open_file, OpenFlags};
-use crate::mm::{translated_ref, translated_refmut, translated_str, PageTable, VirtAddr};
+use crate::mm::{translated_ref, translated_refmut, translated_str};
 use crate::task::{
     current_process, current_task, current_user_token, exit_current_and_run_next,
     suspend_current_and_run_next, TaskStatus,

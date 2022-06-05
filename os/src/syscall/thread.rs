@@ -40,6 +40,8 @@ pub fn sys_thread_create(entry: usize, arg: usize) -> isize {
     tasks[new_task_tid] = Some(Arc::clone(&new_task));
     // add new task to scheduler
     add_task(Arc::clone(&new_task));
+    process_inner.mutex_detect.add_thread(new_task_tid);
+    process_inner.semaphore_detect.add_thread(new_task_tid);
     new_task_tid as isize
 }
 
