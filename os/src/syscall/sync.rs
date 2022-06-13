@@ -53,13 +53,13 @@ pub fn sys_mutex_lock(mutex_id: usize) -> isize {
         .tid;
     let deadlock_detect = process_inner.deadlock_detect;
     drop(process_inner);
-    if process.mutex_check(tid, mutex_id, deadlock_detect) == false {
+    if process.mutex_check(tid, mutex_id, deadlock_detect, mutex.check()) == false {
         return -0xDEAD;
     }
     drop(process);
     mutex.lock();
-    let process = current_process();
-    process.mutex_alloc(tid, mutex_id);
+    // let process = current_process();
+    // process.mutex_alloc(tid, mutex_id);
     0
 }
 
@@ -137,11 +137,11 @@ pub fn sys_semaphore_down(sem_id: usize) -> isize {
         .tid;
     let deadlock_detect = process_inner.deadlock_detect;
     drop(process_inner);
-    if process.semaphore_check(tid, sem_id, deadlock_detect) == false {
+    if process.semaphore_check(tid, sem_id, deadlock_detect, sem.check()) == false {
         return -0xDEAD;
     }
     sem.down();
-    process.semaphore_alloc(tid, sem_id);
+    // process.semaphore_alloc(tid, sem_id);
     0
 }
 

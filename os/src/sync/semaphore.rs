@@ -42,4 +42,9 @@ impl Semaphore {
             block_current_and_run_next();
         }
     }
+
+    pub fn check(&self) -> bool {
+        let inner = self.inner.exclusive_access();
+        return inner.count > 0;
+    }
 }

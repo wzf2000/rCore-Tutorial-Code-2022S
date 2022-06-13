@@ -64,8 +64,13 @@ impl DeadLockDetectStruct {
             }
         }
     }
-    pub fn check(&mut self, tid: usize, id: usize, if_check: bool) -> bool {
-        self.need[tid][id] += 1;
+    pub fn check(&mut self, tid: usize, id: usize, if_check: bool, if_down: bool) -> bool {
+        if if_down {
+            self.allocation[tid][id] += 1;
+            self.available[id] -= 1;
+        } else {
+            self.need[tid][id] += 1;
+        }
         if if_check == false {
             return true;
         }
@@ -103,7 +108,12 @@ impl DeadLockDetectStruct {
         }
         for i in 0..n {
             if finish[i] == false {
-                self.need[tid][id] -= 1;
+                if if_down {
+                    self.allocation[tid][id] -= 1;
+                    self.available[id] += 1;
+                } else {
+                    self.need[tid][id] -= 1;
+                }
                 return false;
             }
         }
@@ -392,9 +402,9 @@ impl ProcessControlBlock {
         process
     }
 
-    pub fn mutex_check(&self, tid: usize, id: usize, if_check: bool) -> bool {
+    pub fn mutex_check(&self, tid: usize, id: usize, if_check: bool, if_lock: bool) -> bool {
         let mut inner = self.inner_exclusive_access();
-        inner.mutex_detect.check(tid, id, if_check)
+        inner.mutex_detect.check(tid, id, if_check, if_lock)
     }
 
     pub fn mutex_alloc(&self, tid: usize, id: usize) {
@@ -407,9 +417,9 @@ impl ProcessControlBlock {
         inner.mutex_detect.dealloc(tid, id);
     }
 
-    pub fn semaphore_check(&self, tid: usize, id: usize, if_check: bool) -> bool {
+    pub fn semaphore_check(&self, tid: usize, id: usize, if_check: bool, if_down: bool) -> bool {
         let mut inner = self.inner_exclusive_access();
-        inner.semaphore_detect.check(tid, id, if_check)
+        inner.semaphore_detect.check(tid, id, if_check, if_down)
     }
 
     pub fn semaphore_alloc(&self, tid: usize, id: usize) {

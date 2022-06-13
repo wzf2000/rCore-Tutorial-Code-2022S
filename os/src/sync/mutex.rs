@@ -7,6 +7,7 @@ use alloc::{collections::VecDeque, sync::Arc};
 pub trait Mutex: Sync + Send {
     fn lock(&self);
     fn unlock(&self);
+    fn check(&self) -> bool;
 }
 
 pub struct MutexSpin {
@@ -39,6 +40,11 @@ impl Mutex for MutexSpin {
     fn unlock(&self) {
         let mut locked = self.locked.exclusive_access();
         *locked = false;
+    }
+
+    fn check(&self) -> bool {
+        let locked = self.locked.exclusive_access();
+        return !(*locked);
     }
 }
 
@@ -84,5 +90,10 @@ impl Mutex for MutexBlocking {
         } else {
             mutex_inner.locked = false;
         }
+    }
+
+    fn check(&self) -> bool {
+        let mutex_inner = self.inner.exclusive_access();
+        return !mutex_inner.locked;
     }
 }
